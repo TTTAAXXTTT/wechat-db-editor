@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>微信数据库副本编辑器</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">LOCAL · COPY ONLY</p>
+      <h1>微信数据库副本编辑器</h1>
+    </div>
+    <div class="top-actions">
+      <span id="lockBadge" class="badge muted">未打开副本</span>
+      <button id="lockButton" class="button secondary hidden" type="button">锁定密钥</button>
+      <button id="shutdownButton" class="button ghost" type="button">退出工具</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="safety-banner">
+      <div class="shield">✓</div>
+      <div>
+        <strong>原微信目录始终只读</strong>
+        <p>先生成带 SHA-256 清单的只读原始快照，再建立独立编辑层。所有修改、删除、WAL 写入和审计都只发生在编辑层。</p>
+      </div>
+    </section>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+
+    <section id="setupView" class="setup-grid">
+      <article class="panel setup-card">
+        <div class="step">1</div>
+        <div class="panel-heading">
+          <h2>检查微信账号目录</h2>
+          <p>只扫描数据库文件名、大小和微信进程状态，不打开数据库。</p>
+        </div>
+        <label>
+          <span>源账号目录</span>
+          <input id="sourcePath" type="text" spellcheck="false" autocomplete="off">
+        </label>
+        <button id="scanButton" class="button primary" type="button">只读检查</button>
+        <div id="scanResult" class="result-box hidden"></div>
+      </article>
+
+      <article class="panel setup-card">
+        <div class="step">2</div>
+        <div class="panel-heading">
+          <h2>创建双层副本</h2>
+          <p>微信必须先正常退出。目标目录必须为空，且不能位于源目录内部。</p>
+        </div>
+        <label>
+          <span>新快照目录</span>
+          <input id="snapshotPath" type="text" spellcheck="false" autocomplete="off">
+        </label>
+        <button id="snapshotButton" class="button primary" type="button">创建并校验副本</button>
+        <div id="jobBox" class="job-box hidden">
+          <div class="job-line"><span id="jobMessage">准备中</span><span id="jobPercent">0%</span></div>
+          <div class="progress"><div id="jobProgress"></div></div>
+          <small id="jobDetail"></small>
+        </div>
+      </article>
+
+      <article class="panel setup-card">
+        <div class="step alternate">或</div>
+        <div class="panel-heading">
+          <h2>打开已有快照</h2>
+          <p>只能打开由本工具创建、带清单的快照，不会把微信源目录当作编辑目录。</p>
+        </div>
+        <label>
+          <span>已有快照目录</span>
+          <input id="existingPath" type="text" spellcheck="false" autocomplete="off">
+        </label>
+        <button id="openSnapshotButton" class="button secondary" type="button">打开快照</button>
+      </article>
+
+      <article id="unlockCard" class="panel setup-card hidden">
+        <div class="step">3</div>
+        <div class="panel-heading">
+          <h2>在内存中解锁</h2>
+          <p>密钥不会写入快照、配置或日志。关闭或锁定工具后需要重新输入。</p>
+        </div>
+        <label>
+          <span>64 位十六进制数据库密钥</span>
+          <div class="password-wrap">
+            <input id="keyInput" type="password" maxlength="64" spellcheck="false" autocomplete="off">
+            <button id="toggleKeyButton" class="inline-button" type="button">显示</button>
+          </div>
+        </label>
+        <button id="unlockButton" class="button danger-safe" type="button">验证并进入编辑器</button>
+        <div id="snapshotSummary" class="result-box"></div>
+      </article>
+    </section>
+
+    <section id="editorView" class="editor-shell hidden">
+      <aside class="sidebar panel">
+        <div class="sidebar-heading">
+          <div>
+            <p class="eyebrow">CONVERSATIONS</p>
+            <h2>会话分片</h2>
+          </div>
+          <button id="refreshConversations" class="icon-button" type="button" title="刷新">↻</button>
+        </div>
+        <input id="conversationFilter" class="compact-input" type="search" placeholder="筛选备注、昵称或 wxid">
+        <div id="conversationStats" class="small-muted"></div>
+        <div id="conversationList" class="conversation-list"></div>
+      </aside>
+
+      <section class="workspace panel">
+        <nav class="tabs" aria-label="编辑器功能">
+          <button class="tab active" data-tab="messages" type="button">聊天记录</button>
+          <button class="tab" data-tab="search" type="button">跨分片搜索</button>
+          <button class="tab" data-tab="audit" type="button">修改与撤销</button>
+          <button class="tab" data-tab="verify" type="button">安全校验</button>
+        </nav>
+
+        <div id="messagesTab" class="tab-page active">
+          <div class="workspace-heading">
+            <div>
+              <p id="activeUsername" class="eyebrow">请选择左侧会话</p>
+              <h2 id="activeConversation">聊天记录</h2>
+              <p id="activeDatabase" class="small-muted"></p>
+            </div>
+            <div class="pager">
+              <button id="prevPage" class="button small secondary" type="button">上一页</button>
+              <span id="pageLabel">第 1 页</span>
+              <button id="nextPage" class="button small secondary" type="button">下一页</button>
+            </div>
+          </div>
+          <div id="messageMeta" class="table-meta"></div>
+          <div class="table-wrap">
+            <table class="message-table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>发送者</th>
+                  <th>类型</th>
+                  <th>内容</th>
+                  <th>定位</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="messageRows">
+                <tr><td colspan="6" class="empty">从左侧选择一个会话。</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="searchTab" class="tab-page">
+          <div class="workspace-heading">
+            <div>
+              <p class="eyebrow">DECOMPRESS · SCAN</p>
+              <h2>跨分片全文搜索</h2>
+              <p class="small-muted">压缩消息会在内存中逐条解压。结果有扫描上限，不会建立额外明文索引。</p>
+            </div>
+          </div>
+          <div class="search-bar">
+            <input id="searchKeyword" type="search" placeholder="输入正文或 XML 关键词">
+            <select id="searchScope">
+              <option value="">全部会话</option>
+            </select>
+            <select id="scanLimit">
+              <option value="50000">最多扫描 5 万条</option>
+              <option value="100000" selected>最多扫描 10 万条</option>
+              <option value="300000">最多扫描 30 万条</option>
+              <option value="500000">最多扫描 50 万条</option>
+            </select>
+            <button id="searchButton" class="button primary" type="button">搜索</button>
+          </div>
+          <div id="searchMeta" class="table-meta"></div>
+          <div id="searchResults" class="search-results"></div>
+        </div>
+
+        <div id="auditTab" class="tab-page">
+          <div class="workspace-heading">
+            <div>
+              <p class="eyebrow">ENCRYPTED AUDIT</p>
+              <h2>修改记录与撤销</h2>
+              <p class="small-muted">完整旧值保存在快照内的加密审计库中，只能按倒序撤销。</p>
+            </div>
+            <button id="refreshAudit" class="button small secondary" type="button">刷新</button>
+          </div>
+          <div id="auditList" class="audit-list"></div>
+        </div>
+
+        <div id="verifyTab" class="tab-page">
+          <div class="workspace-heading">
+            <div>
+              <p class="eyebrow">VERIFY</p>
+              <h2>安全与完整性校验</h2>
+              <p class="small-muted">原始层逐文件核对 SHA-256；编辑层运行 SQLCipher quick_check。</p>
+            </div>
+          </div>
+          <div class="verify-grid">
+            <article class="verify-card">
+              <h3>原始快照哈希</h3>
+              <p>检查只读原始层是否仍与创建时清单一致。</p>
+              <button id="verifyRaw" class="button secondary" type="button">开始哈希校验</button>
+              <pre id="verifyRawResult">尚未校验</pre>
+            </article>
+            <article class="verify-card">
+              <h3>聊天分片结构</h3>
+              <p>逐个运行 quick_check，不会连接微信源数据库。</p>
+              <button id="verifyDb" class="button secondary" type="button">检查全部分片</button>
+              <pre id="verifyDbResult">尚未校验</pre>
+            </article>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="editDialog" class="modal">
+    <form method="dialog" id="editForm">
+      <div class="modal-heading">
+        <div>
+          <p id="editLocator" class="eyebrow"></p>
+          <h2>编辑聊天记录副本</h2>
+        </div>
+        <button id="closeEdit" class="icon-button" value="cancel" type="button">×</button>
+      </div>
+      <div class="modal-grid">
+        <label class="full">
+          <span>message_content</span>
+          <textarea id="editContent" rows="8"></textarea>
+          <small id="contentStorage"></small>
+        </label>
+        <label class="full">
+          <span>source / XML</span>
+          <textarea id="editSource" rows="5"></textarea>
+          <small id="sourceStorage"></small>
+        </label>
+        <label><span>create_time</span><input id="editCreateTime" type="number"></label>
+        <label><span>local_type</span><input id="editLocalType" type="number"></label>
+        <label><span>real_sender_id</span><input id="editSenderId" type="number"></label>
+        <label><span>status</span><input id="editStatus" type="number"></label>
+        <label><span>sort_seq</span><input id="editSortSeq" type="number"></label>
+        <label><span>origin_source</span><input id="editOriginSource" type="number"></label>
+      </div>
+      <div class="modal-warning">保存后只会写入 working_encrypted 编辑层；原微信目录与 original_encrypted 原始层不会改变。</div>
+      <div class="modal-actions">
+        <button id="deleteMessage" class="button destructive" type="button">删除这条副本记录</button>
+        <span class="spacer"></span>
+        <button id="cancelEdit" class="button secondary" type="button">取消</button>
+        <button id="saveEdit" class="button primary" type="submit">保存修改</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog" class="confirm-modal">
+    <form method="dialog">
+      <h2 id="confirmTitle">确认操作</h2>
+      <p id="confirmText"></p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button id="confirmCancel" class="button secondary" value="cancel" type="button">取消</button>
+        <button id="confirmAccept" class="button destructive" value="confirm" type="button">确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

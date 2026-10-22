@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>微信数据库直接编辑器</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">DIRECT SOURCE EDITOR</p>
+      <h1>微信数据库直接编辑器</h1>
+    </div>
+    <div class="top-actions">
+      <span id="statusBadge" class="badge muted">尚未打开源库</span>
+      <button id="lockButton" class="button secondary hidden" type="button">关闭数据库</button>
+      <button id="shutdownButton" class="button ghost" type="button">退出工具</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="safety-banner direct-warning">
+      <div class="shield danger-shield">!</div>
+      <div>
+        <strong>直接写入微信源数据库：没有副本、没有自动备份、没有撤销</strong>
+        <p>每次保存都会直接提交到源 `message_N.db` / `biz_message_N.db`；若修改的是最后一条文本，还会同步 `session.db` 的会话预览，随后执行 WAL checkpoint 和数据库快速检查。微信运行时拒绝写入；密钥捕获必须从微信未登录界面开始等待，再完成登录，整个捕获和验真过程只读。</p>
+      </div>
+    </section>
+    <div id="toast" class="toast hidden" role="status"></div>
+
+    <section id="setupView" class="setup-grid direct-setup">
+      <article class="panel setup-card">
+        <div class="step direct-step">1</div>
+        <div class="panel-heading">
+          <h2>提取密钥或直接打开源数据库</h2>
+          <p>没有密钥时，先退出已登录微信，再重新打开并停在未登录界面；启动等待后才登录。提取成功后再次完全退出微信，才能打开源库。</p>
+        </div>
+        <label>
+          <span>微信账号目录（每次启动均为空）</span>
+          <input id="sourcePath" type="text" value="" placeholder="请手动粘贴账号目录" spellcheck="false" autocomplete="off">
+        </label>
+        <label class="key-label">
+          <span>64 位账号密钥或 WCKEY1 密钥包（每次启动均为空）</span>
+          <div class="password-wrap">
+            <input id="keyInput" type="password" value="" spellcheck="false" autocomplete="new-password">
+            <button id="toggleKeyButton" class="inline-button" type="button">显示</button>
+          </div>
+          <small class="key-help">自动提取只读取当前 Windows 登录会话中的 `Weixin.exe` / `WeChat.exe`，按每个数据库的 salt 提取并逐库只读验证 raw key。程序不记住路径或密钥；需要下次使用时，请在提取成功后主动复制 WCKEY1 密钥包并自行保管。</small>
+        </label>
+        <div class="modal-warning permanent-warning">确认后，浏览和修改都针对上面这个源目录。程序不会为你创建备份。</div>
+        <div class="open-actions">
+          <button id="scanButton" class="button secondary" type="button">只读检查目录</button>
+          <button id="extractKeyButton" class="button primary" type="button">开始等待登录并提取</button>
+          <button id="cancelExtractButton" class="button secondary hidden" type="button">取消等待</button>
+          <button id="openDirectButton" class="button destructive" type="button">直接打开源数据库</button>
+        </div>
+        <div id="scanResult" class="result-box hidden"></div>
+        <div id="keyExportPanel" class="key-export-panel hidden">
+          <strong>当前会话的密钥环可以复制保存</strong>
+          <p>只有主动点击才会生成并显示 WCKEY1 密钥包。它等同于数据库密钥，请勿发送给他人。</p>
+          <div class="open-actions">
+            <button id="exportKeyButton" class="button secondary" type="button">生成并复制密钥包</button>
+            <button id="copyKeyButton" class="button secondary hidden" type="button">再次复制</button>
+          </div>
+          <textarea id="keyBundleOutput" class="hidden" rows="4" readonly spellcheck="false" aria-label="WCKEY1 密钥包"></textarea>
+        </div>
+      </article>
+
+      <article class="panel setup-card info-card">
+        <div class="step alternate">说明</div>
+        <div class="panel-heading">
+          <h2>保存行为</h2>
+          <p>工具直接使用 SQLCipher 打开微信数据库，并处理分片、WAL 和 WCDB 压缩字段。</p>
+        </div>
+        <ul class="feature-list">
+          <li>自动密钥提取从未登录界面开始等待，在你随后登录时读取 WCDB Config.Cipher；严格限制为本机同一登录会话中的微信进程，只申请查询和读取权限。</li>
+          <li>消息、联系人和会话数据库必须全部逐库只读验真后才可继续；程序不会注入 DLL、改写微信进程或自动结束微信。</li>
+          <li>账号目录、手动密钥、内存密钥环和捕获状态不会跨程序启动保留；WCKEY1 密钥包仅在你主动点击时显示和复制。</li>
+          <li>自动发现 `message_0.db` 到任意编号分片及 `biz_message_N.db`。</li>
+          <li>联系人备注、昵称、wxid 和群聊映射来自源 `contact.db` / `Name2Id`。</li>
+          <li>聊天显示正文会保留群聊发送者内部前缀及原 Zstandard 压缩格式。</li>
+          <li>最后一条文本消息会同步更新会话列表摘要；普通历史消息不碰会话摘要。</li>
+          <li>可按指定时间新增“我发送”或“对方发送”的本地普通文本；工具会同时生成控制左右气泡方向的 `packed_info_data` 路由，不调用任何微信发送接口。</li>
+          <li>正文与会话摘要在一个事务中更新；提交后执行 `wal_checkpoint(FULL)`。</li>
+          <li>`message_fts.db` 是微信专用全文搜索索引，不参与气泡显示，本工具不会冒险改写。</li>
+          <li>如果打开工具后又启动微信，程序会拒绝下一次保存。</li>
+        </ul>
+      </article>
+    </section>
+
+    <section id="editorView" class="editor-shell hidden">
+      <aside class="sidebar panel">
+        <div class="sidebar-heading">
+          <div><p class="eyebrow">SOURCE DATABASES</p><h2>源库会话</h2></div>
+          <button id="refreshConversations" class="icon-button" type="button" title="刷新">↻</button>
+        </div>
+        <input id="conversationFilter" class="compact-input" type="search" placeholder="筛选备注、昵称或 wxid">
+        <div id="conversationStats" class="small-muted"></div>
+        <div id="conversationList" class="conversation-list"></div>
+      </aside>
+
+      <section class="workspace panel">
+        <nav class="tabs" aria-label="编辑器功能">
+          <button class="tab active" data-tab="messages" type="button">聊天记录</button>
+          <button class="tab" data-tab="search" type="button">跨分片搜索</button>
+          <button class="tab" data-tab="verify" type="button">数据库检查</button>
+        </nav>
+
+        <div id="messagesTab" class="tab-page active">
+          <div class="workspace-heading">
+            <div>
+              <p id="activeUsername" class="eyebrow">请选择左侧会话</p>
+              <h2 id="activeConversation">源聊天记录</h2>
+              <p id="activeDatabase" class="small-muted"></p>
+            </div>
+            <div class="pager">
+              <button id="addMessage" class="button small primary" type="button" disabled>＋ 新增聊天记录</button>
+              <button id="prevPage" class="button small secondary" type="button">上一页</button>
+              <span id="pageLabel">第 1 页</span>
+              <button id="nextPage" class="button small secondary" type="button">下一页</button>
+            </div>
+          </div>
+          <div id="messageMeta" class="table-meta"></div>
+          <div class="table-wrap">
+            <table class="message-table">
+              <thead><tr><th>时间</th><th>发送者</th><th>类型</th><th>内容</th><th>定位</th><th></th></tr></thead>
+              <tbody id="messageRows"><tr><td colspan="6" class="empty">从左侧选择一个会话。</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="searchTab" class="tab-page">
+          <div class="workspace-heading">
+            <div><p class="eyebrow">DECOMPRESS · SCAN</p><h2>跨源库分片搜索</h2><p class="small-muted">不建立明文索引，压缩正文在内存中解压匹配。</p></div>
+          </div>
+          <div class="search-bar">
+            <input id="searchKeyword" type="search" placeholder="输入正文或 XML 关键词">
+            <select id="searchScope"><option value="">全部会话</option></select>
+            <select id="scanLimit">
+              <option value="50000">最多扫描 5 万条</option>
+              <option value="100000" selected>最多扫描 10 万条</option>
+              <option value="300000">最多扫描 30 万条</option>
+              <option value="500000">最多扫描 50 万条</option>
+            </select>
+            <button id="searchButton" class="button primary" type="button">搜索</button>
+          </div>
+          <div id="searchMeta" class="table-meta"></div>
+          <div id="searchResults" class="search-results"></div>
+        </div>
+
+        <div id="verifyTab" class="tab-page">
+          <div class="workspace-heading">
+            <div><p class="eyebrow">SOURCE QUICK CHECK</p><h2>检查所有源聊天分片</h2><p class="small-muted">逐个运行 SQLCipher quick_check，不修改消息内容。</p></div>
+          </div>
+          <article class="verify-card">
+            <button id="verifyDb" class="button secondary" type="button">检查全部源分片</button>
+            <pre id="verifyDbResult">尚未校验</pre>
+          </article>
+          <article class="verify-card">
+            <h3>修复旧版新增消息的气泡方向</h3>
+            <p class="small-muted">只查找带有 `codex-wechat-local-insert-v1` 标记、且缺少 `packed_info_data` 路由的旧版本地普通文本。它们原本就是“我发送”，修复后会补成“本人 → 当前会话”的右侧气泡路由；正常微信消息不会匹配。</p>
+            <button id="repairInsertRoutes" class="button destructive" type="button">修复旧版新增记录方向</button>
+            <pre id="repairInsertResult">尚未执行</pre>
+          </article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="startupGuide" class="confirm-modal startup-guide">
+    <form method="dialog">
+      <p class="eyebrow">每次启动都请按此顺序操作</p>
+      <h2>先让微信停在未登录界面</h2>
+      <ol class="startup-steps">
+        <li><strong>完全退出当前已登录的微信。</strong><span>从微信菜单和系统托盘退出，不要只关闭窗口。</span></li>
+        <li><strong>重新打开微信，但暂时不要登录。</strong><span>停在二维码、登录确认或账号登录界面；如果自动进入微信，请先退出登录后重开。</span></li>
+        <li><strong>填写账号目录，点击“开始等待登录并提取”。</strong><span>看到“现在可以登录微信”的提示后，再扫码或确认登录。</span></li>
+        <li><strong>提取完成后再次完全退出微信。</strong><span>微信完全退出后，才可点击“直接打开源数据库”进行编辑。</span></li>
+      </ol>
+      <div class="modal-warning">工具不会替你结束、启动或登录微信；这样可以避免错过新版微信创建密钥对象的时机。</div>
+      <div class="modal-actions"><span class="spacer"></span><button id="startupContinue" class="button primary" value="confirm" type="submit">我知道了，开始准备</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="editDialog" class="modal">
+    <form method="dialog" id="editForm">
+      <div class="modal-heading">
+        <div><p id="editLocator" class="eyebrow"></p><h2>直接修改源记录</h2></div>
+        <button id="closeEdit" class="icon-button" value="cancel" type="button">×</button>
+      </div>
+      <div class="modal-grid">
+        <label class="full"><span>聊天窗口显示正文</span><textarea id="editContent" rows="8"></textarea><small id="contentStorage"></small></label>
+        <label class="full"><span>source / XML</span><textarea id="editSource" rows="5"></textarea><small id="sourceStorage"></small></label>
+        <label><span>create_time</span><input id="editCreateTime" type="number"></label>
+        <label><span>local_type</span><input id="editLocalType" type="number"></label>
+        <label><span>real_sender_id</span><input id="editSenderId" type="number"></label>
+        <label><span>status</span><input id="editStatus" type="number"></label>
+        <label><span>sort_seq</span><input id="editSortSeq" type="number"></label>
+        <label><span>origin_source</span><input id="editOriginSource" type="number"></label>
+      </div>
+      <div class="modal-warning permanent-warning">这是不可撤销的源库写入。保存后会提交消息正文；若它是会话最后一条文本，还会同步左侧会话预览。完全退出微信再保存，重新启动微信后查看。</div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button id="cancelEdit" class="button secondary" type="button">取消</button>
+        <button id="saveEdit" class="button destructive" type="submit">直接保存到源库</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="insertDialog" class="modal">
+    <form method="dialog" id="insertForm">
+      <div class="modal-heading">
+        <div><p id="insertTarget" class="eyebrow"></p><h2>新增本地普通文本</h2></div>
+        <button id="closeInsert" class="icon-button" value="cancel" type="button">×</button>
+      </div>
+      <div class="modal-grid">
+        <label><span>消息发送方</span><select id="insertDirection"><option value="self">我发送（右侧气泡）</option><option value="other">对方发送（左侧气泡）</option></select></label>
+        <label id="insertSenderLabel" class="hidden"><span>对方身份</span><select id="insertSender"></select><small id="insertSenderHelp">群聊只能选择这个会话中已有接收文本记录的成员。</small></label>
+        <label><span>消息时间（本机时区）</span><input id="insertTime" type="datetime-local" step="1" required></label>
+        <label class="full"><span>聊天窗口显示正文</span><textarea id="insertContent" rows="8" maxlength="200000" required></textarea><small id="insertDirectionHelp">将使用已确认的本人身份，并写入“本人 → 当前会话”的气泡方向路由。</small></label>
+      </div>
+      <div class="modal-warning permanent-warning">这会直接 INSERT 到源 `Msg_*` 表，没有备份和撤销。工具不调用任何发送接口；“我发送”和“对方发送”会使用不同的状态、发送者、群聊正文前缀以及 `packed_info_data` 收发路由。如果时间晚于当前最后一条，会同步更新会话预览和最后消息指针。首次使用请先在不重要的会话中验证显示效果。</div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button id="cancelInsert" class="button secondary" type="button">取消</button>
+        <button id="saveInsert" class="button destructive" type="submit">直接新增到源库</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog" class="confirm-modal">
+    <form method="dialog">
+      <h2 id="confirmTitle">确认不可撤销操作</h2>
+      <p id="confirmText"></p>
+      <div class="modal-actions"><span class="spacer"></span><button id="confirmCancel" class="button secondary" value="cancel" type="button">取消</button><button id="confirmAccept" class="button destructive" value="confirm" type="button">确认</button></div>
+    </form>
+  </dialog>
+
+  <script src="/direct.js" defer></script>
+</body>
+</html>
