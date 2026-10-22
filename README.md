@@ -1,5 +1,12 @@
 # 微信数据库编辑器 · WeChat DB Editor
 
+## 直接下载使用
+
+**[下载 Windows x64 便携版 v2.0.0](https://github.com/TTTAAXXTTT/wechat-db-editor/releases/download/v2.0.0/WeChat-DB-Editor-Windows-x64-v2.0.0.zip)** · [发布说明及 SHA-256 校验](https://github.com/TTTAAXXTTT/wechat-db-editor/releases/tag/v2.0.0)
+
+完整解压后运行 `WeChatDBEditor.exe`（直接编辑）或 `WeChatDBCopyEditor.exe`（副本编辑）。无需安装 Python。直接编辑前请备份源数据库。
+
+
 Windows 本地微信 4.x 文本数据库编辑工具，提供浏览器界面、会话浏览、搜索、文本修改、直接新增与完整性检查。页面与服务均在本机运行，开源代码采用 MIT 许可，无激活限制。
 
 > 直接模式会原地修改源数据库，没有自动备份或撤销。操作前请自行备份完整账号目录，并完全退出微信。请仅处理本人或获得授权的数据。
@@ -88,3 +95,4 @@ licenses/               第三方 Apache-2.0 全文
 ## 许可
 
 本项目原创代码采用 [MIT](LICENSE) 许可；`wechat_key_extract.py` 中的 Apache-2.0 适配代码及依赖遵循原有条款。参见 [第三方说明](THIRD_PARTY_NOTICES.md) 与 [贡献指南](CONTRIBUTING.md)。本项目与腾讯或微信无隶属关系。
+
