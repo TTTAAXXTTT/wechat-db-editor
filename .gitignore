@@ -1,0 +1,27 @@
+# Local data and credentials
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.db
+*.db-*
+*.sqlite*
+*.log
+*.key
+*.pem
+*.pfx
+.env
+.env.*
+!.env.example
+*keyring*.json
+*key-bundle*
+*license-private*
+*.bin
+data/
+snapshots/
+captures/
+private/
+build/
+dist/
+*.exe
+*.zip
