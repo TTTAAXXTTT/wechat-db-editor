@@ -641,3 +641,12 @@ async function init() {
 }
 
 init();
+
+// Keep attribution separate from application actions and data requests.
+(() => {
+  const dialog = document.getElementById('authorDialog');
+  const signature = document.getElementById('authorSignature');
+  if (!dialog || !signature) return;
+  signature.addEventListener('click', () => dialog.showModal());
+  dialog.showModal();
+})();

@@ -37,21 +37,21 @@ jobs:
           No Python installation required. Use an authorized database and back it up first.
           Direct mode edits the selected source database and has no undo.
           '@ | Set-Content release/WeChat-DB-Editor/START-HERE.txt -Encoding utf8
-          Compress-Archive release/WeChat-DB-Editor release/WeChat-DB-Editor-Windows-x64-v2.0.0.zip
-          $hash = (Get-FileHash release/WeChat-DB-Editor-Windows-x64-v2.0.0.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  WeChat-DB-Editor-Windows-x64-v2.0.0.zip" | Set-Content release/SHA256SUMS.txt -Encoding ascii
+          Compress-Archive release/WeChat-DB-Editor release/WeChat-DB-Editor-Windows-x64-v2.0.1.zip
+          $hash = (Get-FileHash release/WeChat-DB-Editor-Windows-x64-v2.0.1.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  WeChat-DB-Editor-Windows-x64-v2.0.1.zip" | Set-Content release/SHA256SUMS.txt -Encoding ascii
       - name: Publish verified binaries
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = 'v2.0.0'
+          $tag = 'v2.0.1'
           gh release view $tag *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --target "${{ github.sha }}" --draft --title "微信数据库编辑器 v2.0.0 · Windows 便携版" --notes "下载 WeChat-DB-Editor-Windows-x64-v2.0.0.zip，完整解压后运行 WeChatDBEditor.exe 或 WeChatDBCopyEditor.exe。已包含 Python 运行时和全部应用依赖。已通过合成数据库/HTTP 回归测试及两个 EXE 自检。真实微信版本兼容性以 README 支持范围为准；直接编辑前务必备份。"
+            gh release create $tag --target "${{ github.sha }}" --draft --title "微信数据库编辑器 v2.0.1 · Windows 便携版" --notes "下载 WeChat-DB-Editor-Windows-x64-v2.0.1.zip，完整解压后运行 WeChatDBEditor.exe 或 WeChatDBCopyEditor.exe。已包含 Python 运行时和全部应用依赖。已通过合成数据库/HTTP 回归测试及两个 EXE 自检。真实微信版本兼容性以 README 支持范围为准；直接编辑前务必备份。"
             if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
           }
-          gh release upload $tag release/WeChat-DB-Editor-Windows-x64-v2.0.0.zip release/SHA256SUMS.txt --clobber
+          gh release upload $tag release/WeChat-DB-Editor-Windows-x64-v2.0.1.zip release/SHA256SUMS.txt --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed' }
           gh release edit $tag --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

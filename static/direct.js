@@ -739,7 +739,20 @@ async function init() {
   try { await refreshStatus(); } catch (error) {
     showError(error);
   }
+  const authorDialog = document.getElementById('authorDialog');
+  if (authorDialog.open) {
+    await new Promise(resolve => authorDialog.addEventListener('close', resolve, {once: true}));
+  }
   $("#startupGuide").showModal();
 }
 
 init();
+
+// Keep attribution separate from application actions and data requests.
+(() => {
+  const dialog = document.getElementById('authorDialog');
+  const signature = document.getElementById('authorSignature');
+  if (!dialog || !signature) return;
+  signature.addEventListener('click', () => dialog.showModal());
+  dialog.showModal();
+})();
