@@ -2,7 +2,7 @@
 
 ## 直接下载使用
 
-**[下载 Windows x64 便携版 v2.0.0](https://github.com/TTTAAXXTTT/wechat-db-editor/releases/download/v2.0.0/WeChat-DB-Editor-Windows-x64-v2.0.0.zip)** · [发布说明及 SHA-256 校验](https://github.com/TTTAAXXTTT/wechat-db-editor/releases/tag/v2.0.0)
+**[下载 Windows x64 便携版 v2.0.1](https://github.com/TTTAAXXTTT/wechat-db-editor/releases/download/v2.0.1/WeChat-DB-Editor-Windows-x64-v2.0.1.zip)** · [发布说明及 SHA-256 校验](https://github.com/TTTAAXXTTT/wechat-db-editor/releases/tag/v2.0.1)
 
 完整解压后运行 `WeChatDBEditor.exe`（直接编辑）或 `WeChatDBCopyEditor.exe`（副本编辑）。无需安装 Python。直接编辑前请备份源数据库。
 
